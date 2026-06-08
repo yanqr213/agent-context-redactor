@@ -1,0 +1,19 @@
+{
+  "include_paths": ["**/*"],
+  "exclude_paths": ["out/**", "*.zip"],
+  "max_file_size": 1048576,
+  "classification_labels": {
+    "credential": "Secrets and URL credentials",
+    "pii": "Personal or contact data",
+    "custom": "Local project identifiers"
+  },
+  "required_review_labels": ["credential", "custom"],
+  "redaction_patterns": [
+    {
+      "name": "case_id",
+      "regex": "\\b(?P<value>CASE-[0-9]{4,})\\b",
+      "label": "custom",
+      "replacement": "[REDACTED:case]"
+    }
+  ]
+}
