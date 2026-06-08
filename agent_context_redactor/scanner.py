@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from typing import Iterable, Iterator, List, Pattern
+from typing import Iterable, Iterator, List, Optional, Pattern, Tuple
 
 from .models import FileScan, Finding, RedactionPattern, ScanResult, SkippedFile
 from .policy import Policy
 
 
-def scan_paths(paths: Iterable[Path], policy: Policy, root: Path | None = None) -> ScanResult:
+def scan_paths(paths: Iterable[Path], policy: Policy, root: Optional[Path] = None) -> ScanResult:
     root_path = (root or Path.cwd()).resolve()
     result = ScanResult(root=str(root_path))
     for path in paths:
@@ -85,7 +85,7 @@ def _compile_pattern(pattern: RedactionPattern) -> Pattern[str]:
     return re.compile(pattern.regex, flags)
 
 
-def _span_for(pattern: RedactionPattern, match: re.Match[str]) -> tuple[int, int]:
+def _span_for(pattern: RedactionPattern, match: re.Match[str]) -> Tuple[int, int]:
     if pattern.value_group:
         try:
             return match.span(pattern.value_group)
@@ -94,7 +94,7 @@ def _span_for(pattern: RedactionPattern, match: re.Match[str]) -> tuple[int, int
     return match.span(0)
 
 
-def _line_column(text: str, offset: int) -> tuple[int, int]:
+def _line_column(text: str, offset: int) -> Tuple[int, int]:
     line = text.count("\n", 0, offset) + 1
     last_break = text.rfind("\n", 0, offset)
     column = offset + 1 if last_break == -1 else offset - last_break

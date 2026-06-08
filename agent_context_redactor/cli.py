@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import __version__
 from .manifest import policy_hash_from_mapping
@@ -112,7 +112,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
     return _exit_for_findings(scan.findings, args.check)
 
 
-def _load_policy_and_data(path: Optional[str]) -> tuple[Policy, Dict[str, Any]]:
+def _load_policy_and_data(path: Optional[str]) -> Tuple[Policy, Dict[str, Any]]:
     if path:
         policy_path = Path(path)
     else:
@@ -124,7 +124,7 @@ def _load_policy_and_data(path: Optional[str]) -> tuple[Policy, Dict[str, Any]]:
     return load_policy(None), dict(DEFAULT_POLICY)
 
 
-def _paths_and_root(path_args: List[str]) -> tuple[List[Path], Path]:
+def _paths_and_root(path_args: List[str]) -> Tuple[List[Path], Path]:
     paths = iter_policy_paths(path_args)
     bases: List[Path] = []
     for path in paths:
