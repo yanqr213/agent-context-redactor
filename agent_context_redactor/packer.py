@@ -18,10 +18,10 @@ def redact_to_directory(scan: ScanResult, policy: Policy, output_dir: Path, poli
     output_dir.mkdir(parents=True, exist_ok=True)
     redacted_files, diffs = _write_redacted_files(scan, output_dir)
     manifest = build_manifest(scan, redacted_files, policy_hash)
-    (output_dir / "context_manifest.json").write_text(stable_json(manifest), encoding="utf-8", newline="\n")
-    (output_dir / "redaction_report.json").write_text(render_json(scan, policy, "redact"), encoding="utf-8", newline="\n")
-    (output_dir / "redaction_report.md").write_text(render_markdown(scan, policy, "redact"), encoding="utf-8", newline="\n")
-    (output_dir / "REVIEW_DIFF.md").write_text(_join_diffs(diffs), encoding="utf-8", newline="\n")
+    _write_text(output_dir / "context_manifest.json", stable_json(manifest), newline="\n")
+    _write_text(output_dir / "redaction_report.json", render_json(scan, policy, "redact"), newline="\n")
+    _write_text(output_dir / "redaction_report.md", render_markdown(scan, policy, "redact"), newline="\n")
+    _write_text(output_dir / "REVIEW_DIFF.md", _join_diffs(diffs), newline="\n")
     return manifest
 
 
@@ -48,7 +48,7 @@ def _write_redacted_files(scan: ScanResult, output_dir: Path) -> Tuple[List[Dict
         if file_scan.findings:
             original = source.read_text(encoding="utf-8", errors="replace")
             redacted = redact_text(original, file_scan.findings)
-            destination.write_text(redacted.text, encoding="utf-8", newline="")
+            _write_text(destination, redacted.text, newline="")
             safe_diff = make_safe_diff(file_scan.path, file_scan.path, redacted)
             if safe_diff.strip():
                 diffs.append(f"## {file_scan.path}\n\n```diff\n{safe_diff}\n```\n")
@@ -81,3 +81,8 @@ def _join_diffs(diffs: Iterable[str]) -> str:
     if not body:
         body = "No redaction changes were needed."
     return "# Review Diff\n\nThis diff masks original sensitive values with hash markers before comparison.\n\n" + body + "\n"
+
+
+def _write_text(path: Path, text: str, newline: str) -> None:
+    with path.open("w", encoding="utf-8", newline=newline) as handle:
+        handle.write(text)

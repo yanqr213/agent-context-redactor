@@ -144,7 +144,8 @@ def _write_or_print(content: str, output: Optional[str]) -> None:
     if output:
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8", newline="\n")
+        with path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
     else:
         print(content, end="")
 
