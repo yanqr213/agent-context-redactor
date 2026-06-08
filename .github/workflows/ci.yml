@@ -21,3 +21,5 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Smoke
         run: python -m agent_context_redactor --help
+      - name: SARIF smoke
+        run: python -m agent_context_redactor scan examples/sample-project --format sarif --output reports/context-risk.sarif

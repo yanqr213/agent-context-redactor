@@ -59,6 +59,23 @@ class CliReportTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("## Summary", report.read_text(encoding="utf-8"))
 
+    def test_scan_sarif_output_creates_code_scanning_report(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            write(root / "app.env", "token" + "=sampletoken12345\n")
+            report = Path(temp) / "reports" / "context-risk.sarif"
+            code = main(["scan", str(root), "--format", "sarif", "--output", str(report)])
+
+            self.assertEqual(code, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["version"], "2.1.0")
+            run = data["runs"][0]
+            self.assertEqual(run["tool"]["driver"]["name"], "agent-context-redactor")
+            self.assertEqual(run["results"][0]["ruleId"], "secret_assignment")
+            self.assertEqual(run["results"][0]["level"], "error")
+            location = run["results"][0]["locations"][0]["physicalLocation"]
+            self.assertEqual(location["artifactLocation"]["uri"], "app.env")
+
 
 if __name__ == "__main__":
     unittest.main()

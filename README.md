@@ -9,7 +9,7 @@
 - Python 3.9+，运行时零第三方依赖。
 - 可安装 CLI：`agent-context-redactor`。
 - 子命令：`scan`、`pack`、`redact`、`check`、`init-policy`。
-- 报告格式：Markdown 或 JSON。
+- 报告格式：Markdown、JSON 或 SARIF 2.1.0。
 - 输出 ZIP 上下文包，自动创建 `--output` 父目录。
 - 检测 secret-like assignment、URL credential、email、phone、person-like PII。
 - 支持 custom regex、include/exclude paths、max file size、required review labels。
@@ -61,6 +61,12 @@ CI 检查，发现问题时失败：
 
 ```bash
 agent-context-redactor check . --policy redactor-policy.json --format json --output reports/context-risk.json --check error
+```
+
+输出 SARIF，上传到 GitHub Code Scanning：
+
+```bash
+agent-context-redactor scan . --policy redactor-policy.json --format sarif --output reports/context-risk.sarif
 ```
 
 ## 策略文件
@@ -126,10 +132,19 @@ python -m agent_context_redactor --help
 agent-context-redactor check . --policy redactor-policy.json --check error --format json --output reports/context-risk.json
 ```
 
+如果希望把上下文泄露风险显示在 GitHub Code Scanning 中，可以上传 SARIF：
+
+```yaml
+- run: agent-context-redactor scan . --policy redactor-policy.json --format sarif --output reports/context-risk.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: reports/context-risk.sarif
+```
+
 ## 隐私边界
 
 - 本工具默认离线运行，不向网络发送内容。
-- 报告中的 finding 不保存原始敏感值，只保存短 hash、位置、标签和替换后的 excerpt。
+- 报告中的 finding 不保存原始敏感值，只保存短 hash、位置、标签和替换后的 excerpt；SARIF 也遵守同样边界。
 - `REVIEW_DIFF.md` 会先把原始敏感值替换为 hash 标记，再与脱敏结果做 diff。
 - 它不能证明上下文“绝对安全”，只能降低常见泄露风险并让复查更系统。
 - 压缩包仍可能包含未被规则覆盖的业务敏感信息，分享前仍需人工检查。
@@ -153,15 +168,18 @@ agent-context-redactor check . --policy redactor-policy.json --check error --for
 
 `agent-context-redactor` is an offline Python CLI for creating redacted, reviewable context packages before sharing repository files, logs, tickets, environment samples, or data snippets with AI coding agents.
 
-It preserves directory structure, replaces sensitive values with policy-driven placeholders, and emits JSON or Markdown reports, a manifest with hashes, replacement counts, and a safe review diff. It is designed for local workflows and CI checks, with no runtime dependencies.
+It preserves directory structure, replaces sensitive values with policy-driven placeholders, and emits JSON, Markdown, or SARIF 2.1.0 reports, a manifest with hashes, replacement counts, and a safe review diff. It is designed for local workflows and CI checks, with no runtime dependencies.
 
 Basic usage:
 
 ```bash
 agent-context-redactor init-policy
 agent-context-redactor scan . --format json --output reports/context-risk.json
+agent-context-redactor scan . --format sarif --output reports/context-risk.sarif
 agent-context-redactor pack . --output out/context-pack.zip --check warning
 agent-context-redactor check . --check error
 ```
+
+SARIF output can be uploaded with `github/codeql-action/upload-sarif@v3` so context-sharing risks appear in GitHub Code Scanning. Reports include redacted excerpts and value hashes, not raw sensitive values.
 
 Privacy note: the tool runs offline by default and avoids storing raw sensitive values in reports, but it cannot guarantee complete detection. Always review generated context packages before sharing them.

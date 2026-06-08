@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Added SARIF 2.1.0 output for GitHub Code Scanning.
+- Added SARIF CLI smoke coverage and report tests.
+- Added public GitHub project URLs.
+
 ## 0.1.0
 
 - Initial local release.
