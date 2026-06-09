@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List
 
 from .models import ScanResult
@@ -29,7 +30,7 @@ def report_data(scan: ScanResult, policy: Policy, mode: str = "scan") -> Dict[st
                 "kind": item.kind,
                 "label": item.label,
                 "value_hash": item.value_hash,
-                "excerpt": item.excerpt,
+                "excerpt": _safe_excerpt(item.excerpt, policy),
             }
             for item in scan.findings
         ],
@@ -75,7 +76,7 @@ def render_sarif(scan: ScanResult, policy: Policy, mode: str = "scan") -> str:
                         "rules": list(rules.values()),
                     }
                 },
-                "results": [_finding_to_sarif(item, review_labels) for item in scan.findings],
+                "results": [_finding_to_sarif(item, review_labels, policy) for item in scan.findings],
                 "properties": {
                     "mode": mode,
                     "root": scan.root,
@@ -88,6 +89,76 @@ def render_sarif(scan: ScanResult, policy: Policy, mode: str = "scan") -> str:
         ],
     }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def render_review(scan: ScanResult, policy: Policy, mode: str = "scan") -> str:
+    data = report_data(scan, policy, mode)
+    review_labels = set(data["required_review_labels"])
+    status, status_detail = _review_status(data)
+    lines: List[str] = [
+        "# Context Share Review",
+        "",
+        f"**Status:** {status} - {status_detail}",
+        "",
+        "## Summary",
+        "",
+        f"- Mode: {mode}",
+        f"- Files scanned: {data['files_scanned']}",
+        f"- Files skipped: {data['files_skipped']}",
+        f"- Findings: {data['findings_total']}",
+        f"- Review required: {'yes' if data['review_required'] else 'no'}",
+        f"- Required review labels: {_csv(data['required_review_labels'])}",
+        f"- Risk: {data['risk_summary']}",
+        "",
+        "## Reviewer Checklist",
+        "",
+        "- [ ] Confirm every required-review finding has an owner decision before sharing context.",
+        "- [ ] Open `REVIEW_DIFF.md` when using `redact` or `pack` outputs.",
+        "- [ ] Review skipped files separately; they are not represented in the redacted package.",
+        "- [ ] Share only the redacted output directory or ZIP, not the original input paths.",
+        "",
+        "## Hot Files",
+        "",
+        "| Path | Findings | Review Required | Labels | Kinds |",
+        "| --- | ---: | ---: | --- | --- |",
+    ]
+    hot_files = _hot_file_rows(scan, review_labels)
+    for item in hot_files[:10]:
+        lines.append(
+            f"| {_md(item['path'])} | {item['findings']} | {item['review_required']} | "
+            f"{_md(_csv(item['labels']))} | {_md(_csv(item['kinds']))} |"
+        )
+    if not hot_files:
+        lines.append("| none | 0 | 0 | none | none |")
+
+    lines.extend(
+        [
+            "",
+            "## Sample Findings",
+            "",
+            "| Path | Line | Label | Kind | Hash | Redacted Excerpt |",
+            "| --- | ---: | --- | --- | --- | --- |",
+        ]
+    )
+    sample_findings = sorted(
+        scan.findings,
+        key=lambda item: (0 if item.label in review_labels else 1, item.path, item.line, item.kind),
+    )[:10]
+    for item in sample_findings:
+        lines.append(
+            f"| {_md(item.path)} | {item.line} | {_md(item.label)} | {_md(item.kind)} | "
+            f"{item.value_hash} | `{_md(_shorten(_safe_excerpt(item.excerpt, policy)))}` |"
+        )
+    if not sample_findings:
+        lines.append("| none | 0 | none | none | none | none |")
+
+    lines.extend(["", "## Skipped Files", "", "| Path | Reason | Size |", "| --- | --- | ---: |"])
+    for item in scan.skipped[:10]:
+        lines.append(f"| {_md(item.path)} | {_md(item.reason)} | {item.size} |")
+    if not scan.skipped:
+        lines.append("| none | none | 0 |")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def render_markdown(scan: ScanResult, policy: Policy, mode: str = "scan") -> str:
@@ -130,11 +201,12 @@ def render_markdown(scan: ScanResult, policy: Policy, mode: str = "scan") -> str
     return "\n".join(lines)
 
 
-def _finding_to_sarif(finding: Any, review_labels: set[str]) -> Dict[str, Any]:
+def _finding_to_sarif(finding: Any, review_labels: set[str], policy: Policy) -> Dict[str, Any]:
+    excerpt = _safe_excerpt(finding.excerpt, policy)
     return {
         "ruleId": finding.kind,
         "level": _sarif_level(finding.label, review_labels),
-        "message": {"text": f"{finding.label} detected and redacted: {finding.excerpt}"},
+        "message": {"text": f"{finding.label} detected and redacted: {excerpt}"},
         "locations": [
             {
                 "physicalLocation": {
@@ -164,6 +236,80 @@ def _sarif_level(label: str, review_labels: set[str]) -> str:
     if label == "pii":
         return "warning"
     return "note"
+
+
+def _safe_excerpt(excerpt: str, policy: Policy) -> str:
+    redacted = excerpt
+    for pattern in policy.redaction_patterns:
+        flags = re.MULTILINE
+        for flag in pattern.flags:
+            if flag.upper() == "IGNORECASE":
+                flags |= re.IGNORECASE
+            elif flag.upper() == "DOTALL":
+                flags |= re.DOTALL
+        compiled = re.compile(pattern.regex, flags)
+        replacements: List[tuple[int, int, str]] = []
+        for match in compiled.finditer(redacted):
+            if pattern.value_group:
+                try:
+                    start, end = match.span(pattern.value_group)
+                except IndexError:
+                    start, end = match.span(0)
+            else:
+                start, end = match.span(0)
+            if start != end:
+                replacements.append((start, end, pattern.replacement))
+        for start, end, replacement in reversed(replacements):
+            redacted = redacted[:start] + replacement + redacted[end:]
+    return redacted
+
+
+def _review_status(data: Dict[str, Any]) -> tuple[str, str]:
+    if data["review_required"]:
+        return "BLOCKED", "required-review labels were detected"
+    if data["findings_total"]:
+        return "REVIEW", "findings were detected outside required-review labels"
+    if data["files_skipped"]:
+        return "REVIEW", "no findings detected, but skipped files need separate handling"
+    return "READY", "no findings or skipped files detected"
+
+
+def _hot_file_rows(scan: ScanResult, review_labels: set[str]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for file_scan in scan.files:
+        if not file_scan.findings:
+            continue
+        labels = sorted({item.label for item in file_scan.findings})
+        kinds = sorted({item.kind for item in file_scan.findings})
+        review_count = sum(1 for item in file_scan.findings if item.label in review_labels)
+        rows.append(
+            {
+                "path": file_scan.path,
+                "findings": len(file_scan.findings),
+                "review_required": review_count,
+                "labels": labels,
+                "kinds": kinds,
+            }
+        )
+    rows.sort(key=lambda item: (-int(item["review_required"]), -int(item["findings"]), str(item["path"])))
+    return rows
+
+
+def _csv(values: Any) -> str:
+    if not values:
+        return "none"
+    return ", ".join(str(item) for item in values)
+
+
+def _md(value: Any) -> str:
+    return str(value).replace("\n", " ").replace("|", "\\|")
+
+
+def _shorten(value: str, limit: int = 160) -> str:
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _risk_summary(scan: ScanResult, review_findings: List[Any]) -> str:

@@ -11,7 +11,7 @@ from . import __version__
 from .manifest import policy_hash_from_mapping
 from .packer import pack_zip, redact_to_directory
 from .policy import DEFAULT_POLICY, DEFAULT_POLICY_NAME, Policy, iter_policy_paths, load_policy, write_default_policy
-from .report import render_json, render_markdown, render_sarif
+from .report import render_json, render_markdown, render_review, render_sarif
 from .scanner import scan_paths
 
 
@@ -64,7 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
 def _add_scan_options(parser: argparse.ArgumentParser, include_output: bool = True, check_default: str = "warning") -> None:
     parser.add_argument("paths", nargs="*", help="files or directories to scan")
     parser.add_argument("--policy", "-p", help=f"policy JSON path, default: {DEFAULT_POLICY_NAME} if present")
-    parser.add_argument("--format", choices=["markdown", "json", "sarif"], default="markdown", help="report format")
+    parser.add_argument(
+        "--format",
+        choices=["markdown", "json", "sarif", "review"],
+        default="markdown",
+        help="report format",
+    )
     if include_output:
         parser.add_argument("--output", "-o", help="report output path")
     parser.add_argument("--check", choices=["warning", "error"], default=check_default, help="finding severity for command exit behavior")
@@ -139,6 +144,8 @@ def _render(scan: Any, policy: Policy, fmt: str, mode: str) -> str:
         return render_json(scan, policy, mode)
     if fmt == "sarif":
         return render_sarif(scan, policy, mode)
+    if fmt == "review":
+        return render_review(scan, policy, mode)
     return render_markdown(scan, policy, mode)
 
 

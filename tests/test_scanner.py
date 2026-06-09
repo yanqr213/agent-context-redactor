@@ -23,12 +23,34 @@ class ScannerTests(unittest.TestCase):
             result = scan(root)
             self.assertEqual(result.counts_by_kind()["url_credential"], 1)
 
+    def test_url_credential_takes_priority_over_overlapping_email(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write(root / "config.txt", "DATABASE_URL=postgres://demo:pass12345@db.internal.test/app\n")
+            result = scan(root)
+
+            self.assertEqual(result.counts_by_kind()["url_credential"], 1)
+            self.assertNotIn("email", result.counts_by_kind())
+            self.assertNotIn("pass12345", result.findings[0].excerpt)
+
     def test_email_phone_and_person_detected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write(root / "ticket.txt", "owner = Jane Sample\nemail ops@internal.test\nphone +1 202 555 0199\n")
             result = scan(root)
-            self.assertGreaterEqual(result.counts_by_label()["pii"], 3)
+            self.assertEqual(result.counts_by_kind()["person_name_assignment"], 1)
+            self.assertEqual(result.counts_by_kind()["email"], 1)
+            self.assertEqual(result.counts_by_kind()["phone"], 1)
+
+    def test_person_name_assignment_does_not_cross_lines(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write(root / "ticket.txt", "owner = Jane Sample\nemail ops@internal.test\n")
+            result = scan(root)
+
+            self.assertEqual(result.counts_by_kind()["person_name_assignment"], 1)
+            self.assertEqual(result.counts_by_kind()["email"], 1)
+            self.assertNotIn("email ops", result.findings[0].excerpt)
 
     def test_large_file_skipped(self):
         with tempfile.TemporaryDirectory() as temp:

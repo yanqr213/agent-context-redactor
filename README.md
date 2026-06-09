@@ -9,12 +9,13 @@
 - Python 3.9+，运行时零第三方依赖。
 - 可安装 CLI：`agent-context-redactor`。
 - 子命令：`scan`、`pack`、`redact`、`check`、`init-policy`。
-- 报告格式：Markdown、JSON 或 SARIF 2.1.0。
+- 报告格式：Markdown、JSON、SARIF 2.1.0 或 review packet。
 - 输出 ZIP 上下文包，自动创建 `--output` 父目录。
 - 检测 secret-like assignment、URL credential、email、phone、person-like PII。
 - 支持 custom regex、include/exclude paths、max file size、required review labels。
 - 跳过大文件和二进制文件。
 - 保留文件结构，生成替换审计计数、安全 diff、manifest hash。
+- 生成可直接贴到 PR comment、GitHub Actions step summary 或 agent handoff 的上下文分享审阅清单。
 - 适合 CI 中用 `--check warning|error` 控制是否失败。
 
 ## 安装
@@ -43,6 +44,12 @@ agent-context-redactor init-policy --output redactor-policy.json
 
 ```bash
 agent-context-redactor scan . --policy redactor-policy.json --format markdown --output reports/context-risk.md
+```
+
+生成给 PR 或 CI 摘要使用的审阅清单：
+
+```bash
+agent-context-redactor scan . --policy redactor-policy.json --format review --output reports/context-review.md
 ```
 
 生成脱敏目录：
@@ -117,6 +124,8 @@ agent-context-redactor scan . --policy redactor-policy.json --format sarif --out
 
 `pack` 会把同样内容写入 ZIP。
 
+`scan` 和 `check` 还可以用 `--format review` 生成短审阅包。它会给出 `READY`、`REVIEW` 或 `BLOCKED` 状态、必看清单、风险最高文件、样例 finding 和跳过文件列表；报告只包含脱敏 excerpt 与 hash，不包含原始敏感值。
+
 ## CI
 
 项目自带 GitHub Actions 配置，会在 Python 3.9 到 3.12 上运行：
@@ -130,6 +139,7 @@ python -m agent_context_redactor --help
 
 ```bash
 agent-context-redactor check . --policy redactor-policy.json --check error --format json --output reports/context-risk.json
+agent-context-redactor scan . --policy redactor-policy.json --format review --output reports/context-review.md
 ```
 
 如果希望把上下文泄露风险显示在 GitHub Code Scanning 中，可以上传 SARIF：
@@ -168,17 +178,20 @@ agent-context-redactor check . --policy redactor-policy.json --check error --for
 
 `agent-context-redactor` is an offline Python CLI for creating redacted, reviewable context packages before sharing repository files, logs, tickets, environment samples, or data snippets with AI coding agents.
 
-It preserves directory structure, replaces sensitive values with policy-driven placeholders, and emits JSON, Markdown, or SARIF 2.1.0 reports, a manifest with hashes, replacement counts, and a safe review diff. It is designed for local workflows and CI checks, with no runtime dependencies.
+It preserves directory structure, replaces sensitive values with policy-driven placeholders, and emits JSON, Markdown, SARIF 2.1.0, or concise review-packet reports, a manifest with hashes, replacement counts, and a safe review diff. It is designed for local workflows and CI checks, with no runtime dependencies.
 
 Basic usage:
 
 ```bash
 agent-context-redactor init-policy
 agent-context-redactor scan . --format json --output reports/context-risk.json
+agent-context-redactor scan . --format review --output reports/context-review.md
 agent-context-redactor scan . --format sarif --output reports/context-risk.sarif
 agent-context-redactor pack . --output out/context-pack.zip --check warning
 agent-context-redactor check . --check error
 ```
+
+The `review` format is meant for pull request comments, GitHub Actions step summaries, and agent handoffs. It reports a `READY`, `REVIEW`, or `BLOCKED` state, hot files, sample redacted findings, skipped files, and a short reviewer checklist without exposing raw secret values.
 
 SARIF output can be uploaded with `github/codeql-action/upload-sarif@v3` so context-sharing risks appear in GitHub Code Scanning. Reports include redacted excerpts and value hashes, not raw sensitive values.
 

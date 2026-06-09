@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Pattern, Tuple
 
@@ -68,10 +69,12 @@ def _scan_file(file_path: Path, relative: str, policy: Policy, result: ScanResul
                     label=pattern.label,
                     replacement=pattern.replacement,
                     value_hash=hashlib.sha256(value.encode("utf-8")).hexdigest()[:16],
-                    excerpt=_excerpt(text, start, end, pattern.replacement),
+                    excerpt="",
                 )
             )
+    file_scan.findings = _dedupe_overlapping_findings(file_scan.findings)
     file_scan.findings.sort(key=lambda item: (item.start, item.end, item.kind))
+    file_scan.findings = _sanitize_excerpts(text, file_scan.findings)
     result.files.append(file_scan)
 
 
@@ -101,15 +104,63 @@ def _line_column(text: str, offset: int) -> Tuple[int, int]:
     return line, column
 
 
-def _excerpt(text: str, start: int, end: int, replacement: str) -> str:
-    line_start = text.rfind("\n", 0, start) + 1
-    line_end = text.find("\n", end)
-    if line_end == -1:
-        line_end = len(text)
-    prefix = text[line_start:start]
-    suffix = text[end:line_end]
-    excerpt = f"{prefix}{replacement}{suffix}".strip()
-    return excerpt[:240]
+def _sanitize_excerpts(text: str, findings: List[Finding]) -> List[Finding]:
+    sanitized: List[Finding] = []
+    for finding in findings:
+        line_start, line_end = _line_bounds(text, finding.start)
+        line_findings = [
+            item
+            for item in findings
+            if item.start < line_end and item.end > line_start
+        ]
+        selected = _non_overlapping_for_excerpt(line_findings)
+        line = text[line_start:line_end]
+        for item in sorted(selected, key=lambda value: value.start, reverse=True):
+            start = max(item.start - line_start, 0)
+            end = min(item.end - line_start, len(line))
+            line = line[:start] + item.replacement + line[end:]
+        sanitized.append(replace(finding, excerpt=line.strip()[:240]))
+    return sanitized
+
+
+def _line_bounds(text: str, offset: int) -> Tuple[int, int]:
+    start = text.rfind("\n", 0, offset) + 1
+    end = text.find("\n", offset)
+    if end == -1:
+        end = len(text)
+    return start, end
+
+
+def _non_overlapping_for_excerpt(findings: List[Finding]) -> List[Finding]:
+    chosen: List[Finding] = []
+    for item in sorted(findings, key=lambda value: (-_label_priority(value.label), value.start, -(value.end - value.start))):
+        if any(item.start < other.end and item.end > other.start for other in chosen):
+            continue
+        chosen.append(item)
+    return chosen
+
+
+def _dedupe_overlapping_findings(findings: List[Finding]) -> List[Finding]:
+    selected: List[Finding] = []
+    ranked = sorted(
+        findings,
+        key=lambda item: (-_label_priority(item.label), -(item.end - item.start), item.start, item.kind),
+    )
+    for item in ranked:
+        if any(item.start < other.end and item.end > other.start for other in selected):
+            continue
+        selected.append(item)
+    return selected
+
+
+def _label_priority(label: str) -> int:
+    if label == "credential":
+        return 3
+    if label == "custom":
+        return 2
+    if label == "pii":
+        return 1
+    return 0
 
 
 def _looks_binary(data: bytes) -> bool:

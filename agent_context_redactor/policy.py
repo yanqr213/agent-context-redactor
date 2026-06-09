@@ -40,7 +40,7 @@ BUILTIN_PATTERNS: List[RedactionPattern] = [
         regex=(
             r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|pwd|private[_-]?key|"
             r"access[_-]?key|client[_-]?secret|auth[_-]?token)\b"
-            r"\s*[:=]\s*[\"']?(?P<value>[A-Za-z0-9_./+=:@-]{8,})[\"']?"
+            r"[ \t]*[:=][ \t]*[\"']?(?P<value>[A-Za-z0-9_./+=:@-]{8,})[\"']?"
         ),
         label="credential",
         replacement="[REDACTED:secret]",
@@ -71,7 +71,7 @@ BUILTIN_PATTERNS: List[RedactionPattern] = [
         name="person_name_assignment",
         regex=(
             r"(?i)\b(?:full[_ -]?name|person|contact|owner|assignee)\b"
-            r"\s*[:=]\s*[\"']?(?P<value>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})[\"']?"
+            r"[ \t]*[:=][ \t]*[\"']?(?P<value>[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})[\"']?"
         ),
         label="pii",
         replacement="[REDACTED:person]",

@@ -76,6 +76,29 @@ class CliReportTests(unittest.TestCase):
             location = run["results"][0]["locations"][0]["physicalLocation"]
             self.assertEqual(location["artifactLocation"]["uri"], "app.env")
 
+    def test_scan_review_output_summarizes_without_raw_secret(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            write(
+                root / "app.env",
+                "token" + "=sampletoken12345\nlogin failed for ops@internal.test from +1 202 555 0199\n",
+            )
+            report = Path(temp) / "reports" / "context-review.md"
+            code = main(["scan", str(root), "--format", "review", "--output", str(report)])
+
+            self.assertEqual(code, 0)
+            text = report.read_text(encoding="utf-8")
+            self.assertIn("# Context Share Review", text)
+            self.assertIn("**Status:** BLOCKED", text)
+            self.assertIn("## Reviewer Checklist", text)
+            self.assertIn("app.env", text)
+            self.assertIn("[REDACTED:secret]", text)
+            self.assertIn("[REDACTED:phone]", text)
+            self.assertIn("[REDACTED:email]", text)
+            self.assertNotIn("sampletoken12345", text)
+            self.assertNotIn("ops@internal.test", text)
+            self.assertNotIn("+1 202 555 0199", text)
+
 
 if __name__ == "__main__":
     unittest.main()

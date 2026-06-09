@@ -23,3 +23,8 @@ jobs:
         run: python -m agent_context_redactor --help
       - name: SARIF smoke
         run: python -m agent_context_redactor scan examples/sample-project --format sarif --output reports/context-risk.sarif
+      - name: Review report smoke
+        run: |
+          python -m agent_context_redactor scan examples/sample-project --format review --output reports/context-review.md
+          grep -q "Context Share Review" reports/context-review.md
+          ! grep -q "sampletoken12345" reports/context-review.md
